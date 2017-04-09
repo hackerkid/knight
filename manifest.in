@@ -1,0 +1,3 @@
+graft knight/templates
+graft knight/static
+include knight/schema.sql
