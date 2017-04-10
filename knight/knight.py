@@ -1,76 +1,69 @@
 import os
-import sqlite3
+import datetime
+
 from flask import Flask, request, session, g, redirect, url_for, abort, \
      render_template, flash, jsonify
+import peewee
+from peewee import *
 
 app = Flask(__name__)
 app.config.from_object(__name__) 
 app.config.from_pyfile('knight_settings.cfg', silent=True)
 
-app.config.update(dict(
-    DATABASE=os.path.join(app.root_path, app.config['DATABASE'])
-))
+db = MySQLDatabase(app.config['DB_NAME'], host=app.config['DB_HOST'], user=app.config['DB_USER'], password=app.config['DB_PASSWORD'])
 
-def connect_db():
-    """Connects to the specific database."""
-    rv = sqlite3.connect(app.config['DATABASE'])
-    rv.row_factory = sqlite3.Row
-    return rv
+class BaseModel(Model):
+    class Meta:
+        database = db
 
-def get_db():
-    """Opens a new database connection if there is none yet for the
-    current application context.
-    """
-    if not hasattr(g, 'sqlite_db'):
-        g.sqlite_db = connect_db()
-    return g.sqlite_db
+class User(BaseModel):
+    username = CharField(unique=True)
+    password = CharField()
+    email = CharField()
+    join_date = DateTimeField()
 
-@app.teardown_appcontext
-def close_db(error):
-    """Closes the database again at the end of the request."""
-    if hasattr(g, 'sqlite_db'):
-        g.sqlite_db.close()
+    class Meta:
+        order_by = ('username',)
 
-def init_db():
-    db = get_db()
-    with app.open_resource('schema.sql', mode='r') as f:
-        db.cursor().executescript(f.read())
-    db.commit()
+class Report(BaseModel):
+    url = peewee.TextField()
+    date = peewee.DateTimeField()
+    user = ForeignKeyField(User)
 
-@app.cli.command('initdb')
-def initdb_command():
-    """Initializes the database."""
-    init_db()
-    print('Initialized the database.')
+@app.cli.command('createtable')
+def create_tables():
+    db.connect()
+    db.create_tables([User, Report])
 
 @app.route('/')
 def show_entries():
-    db = get_db()
-    cur = db.execute('select title, text from entries order by id desc')
-    entries = cur.fetchall()
-    return render_template('show_entries.html', entries=entries)
+    return render_template('show_entries.html', reports=Report.select())
 
 @app.route('/add', methods=['POST'])
 def add_entry():
     if not session.get('logged_in'):
         abort(401)
-    db = get_db()
-    db.execute('insert into entries (title, text) values (?, ?)',
-                 [request.form['title'], request.form['text']])
-    db.commit()
+    new_entry = Report(url=request.form['url'], date=datetime.datetime.now(), user=get_current_user())
+    new_entry.save()
     flash('New entry was successfully posted')
     return redirect(url_for('show_entries'))
+
+def get_current_user():
+    if session.get('logged_in'):
+        return User.get(username=session['username'])
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     error = None
     if request.method == 'POST':
-        if request.form['username'] != app.config['USERNAME']:
-            error = 'Invalid username'
-        elif request.form['password'] != app.config['PASSWORD']:
-            error = 'Invalid password'
+        try:
+            user = User.get(username=request.form['username'], password=request.form['password'])
+        except User.DoesNotExist:
+            error = 'Invalid login'
+            flash('Invalid logins')
         else:
             session['logged_in'] = True
+            session['username'] = user.username
             flash('You were logged in')
             return redirect(url_for('show_entries'))
     return render_template('login.html', error=error)
@@ -85,11 +78,11 @@ def logout():
 def get_article_info():
     errors = []
     try:
-        url = request.form["url"]
+        url = request.form['url']
     except:
         errors.append(
-            "Something went wrong while fetching the article info"
+            'Something went wrong while fetching the article info'
         )
         abort(401)
     
-    return jsonify({"url": url}) 
+    return jsonify({'url': url}) 

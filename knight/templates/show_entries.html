@@ -4,16 +4,14 @@
     <form action="{{ url_for('add_entry') }}" method=post class=add-entry>
       <dl>
         <dt>Title:
-        <dd><input type=text size=30 name=title>
-        <dt>Text:
-        <dd><textarea name=text rows=5 cols=40></textarea>
+        <dd><input type=text size=50 name=url>
         <dd><input type=submit value=Share>
       </dl>
     </form>
   {% endif %}
   <ul class=entries>
-  {% for entry in entries %}
-    <li><h2>{{ entry.title }}</h2>{{ entry.text|safe }}
+  {% for report in reports %}
+    <li><h2>{{ report.url|safe }}</h2>{{ report.date|safe }} {{ report.user.username|safe }}
   {% else %}
     <li><em>Unbelievable.  No entries here so far</em>
   {% endfor %}
