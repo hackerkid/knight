@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import os
 import datetime
 
@@ -5,35 +7,113 @@ from flask import Flask, request, session, g, redirect, url_for, abort, \
      render_template, flash, jsonify
 import peewee
 from peewee import *
+import requests
+from newspaper import Article
 
+from keras.models import load_model
+from sklearn.externals import joblib
+from keras.preprocessing import sequence
+import fileinput
+import re
+from nltk.corpus import stopwords
+from bs4 import BeautifulSoup
+from gevent.pywsgi import WSGIServer
+
+CLIENT_ID = "299591701106-cor2f1c6updmd3dq3pjg5er1evcus7ed.apps.googleusercontent.com"
 app = Flask(__name__)
 app.config.from_object(__name__) 
 app.config.from_pyfile('knight_settings.cfg', silent=True)
-
 db = MySQLDatabase(app.config['DB_NAME'], host=app.config['DB_HOST'], user=app.config['DB_USER'], password=app.config['DB_PASSWORD'])
+tk = joblib.load('models/tokenizer.pkl')
+tensorflow_model = None
+
+def news_to_wordlist(news_text, remove_stopwords=False):
+	news_text = BeautifulSoup(news_text).get_text()
+	news_text = re.sub("[^a-zA-Z]"," ", news_text)
+	words = news_text.lower().split()
+
+	if remove_stopwords:
+		stops = set(stopwords.words("english"))
+		words = [w for w in words if not w in stops]
+	return(words)
 
 class BaseModel(Model):
     class Meta:
         database = db
 
 class User(BaseModel):
-    username = CharField(unique=True)
+    username = CharField()
+    full_name = CharField()
     password = CharField()
-    email = CharField()
+    email = CharField(unique=True)
     join_date = DateTimeField()
-
     class Meta:
-        order_by = ('username',)
+        order_by = ('email',)
 
 class Report(BaseModel):
     url = peewee.TextField()
     date = peewee.DateTimeField()
     user = ForeignKeyField(User)
 
+
 @app.cli.command('createtable')
 def create_tables():
     db.connect()
     db.create_tables([User, Report])
+
+def get_current_user():
+    if session.get('logged_in'):
+        return User.get(email=session['email'])
+
+def deep_learn_results(article_body):
+    maxlen = 400
+    clean_test_news_texts = []
+    clean_test_news_texts.append(" ".join(news_to_wordlist(article_body, True)))
+    x = tk.texts_to_sequences(clean_test_news_texts)
+    x = sequence.pad_sequences(x, maxlen=maxlen)
+    return tensorflow_model.predict(x)
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    error = None
+    if request.method == 'POST':
+        if (request.form['auth'] == 'google'):
+                token = request.form['token']
+                r = requests.post("https://www.googleapis.com/oauth2/v3/tokeninfo", data={"id_token": token})
+                if (r.status_code != 200):
+                    error = "ivalid token"
+                    return render_template('error.html', error=error)
+                else:
+                    data =  r.json()
+                    email = data["email"]
+                    full_name = data["name"]
+                try:
+                    user = User.get(email=email)
+                except User.DoesNotExist:
+                    user = User(email=email, full_name=full_name, join_date=datetime.datetime.now())
+                    user.save()
+                session['logged_in'] = True
+                session['email'] = user.email
+                session['full_name'] = user.full_name
+                return jsonify("logged in")
+        else:
+            try:
+                user = User.get(email=request.form['email'], password=request.form['password'])
+            except User.DoesNotExist:
+                error = 'Invalid login'
+                flash('Invalid login')
+            else:
+                session['logged_in'] = True
+                session['email'] = user.email
+                flash('You were logged in')
+                return redirect(url_for('show_entries'))
+    return render_template('login.html', error=error)
+
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    flash('You were logged out')
+    return redirect(url_for('show_entries'))
 
 @app.route('/')
 def show_entries():
@@ -48,41 +128,56 @@ def add_entry():
     flash('New entry was successfully posted')
     return redirect(url_for('show_entries'))
 
-def get_current_user():
-    if session.get('logged_in'):
-        return User.get(username=session['username'])
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    error = None
-    if request.method == 'POST':
-        try:
-            user = User.get(username=request.form['username'], password=request.form['password'])
-        except User.DoesNotExist:
-            error = 'Invalid login'
-            flash('Invalid logins')
-        else:
-            session['logged_in'] = True
-            session['username'] = user.username
-            flash('You were logged in')
-            return redirect(url_for('show_entries'))
-    return render_template('login.html', error=error)
-
-@app.route('/logout')
-def logout():
-    session.pop('logged_in', None)
-    flash('You were logged out')
-    return redirect(url_for('show_entries'))
-
-@app.route('/api/article_info', methods=['POST'])
+@app.route('/api/article/info', methods=['POST'])
 def get_article_info():
-    errors = []
-    try:
-        url = request.form['url']
-    except:
-        errors.append(
-            'Something went wrong while fetching the article info'
-        )
-        abort(401)
+    url = request.form['url']
     
-    return jsonify({'url': url}) 
+    is_article = True
+    score = 0.0
+    article_authors = None
+    article_keywords = None
+    article_summary = None
+
+    article = Article(url)
+    article.download()
+    try:
+        article.parse()
+    except newspaper.article.ArticleException:
+        is_article = False
+    else:
+        article_text = article.text
+        ml = deep_learn_results(article_text)
+        score = float(ml[0][0])
+        article_authors = article.authors
+        article.nlp()
+        article_keywords = article.keywords
+        article_summary = article.summary
+    
+    try:
+        total_reports = Report.select().where(Report.url==url).count()
+    except Report.DoesNotExist:
+        total_reports = 0
+    return jsonify({"is_article": is_article, "total_reports": total_reports, "ml_score": score, "authors": article_authors, "keywords": article_keywords, "summary": article_summary})
+
+@app.route('/api/report/add', methods=['POST'])
+def new_report():
+    if not session.get('logged_in'):
+        return "Please login." 
+    try:
+        old_entry = Report.get(url=request.form['url'], user=get_current_user())
+    except Report.DoesNotExist:
+        new_entry = Report(url=request.form['url'], date=datetime.datetime.now(), user=get_current_user())
+        new_entry.save()
+        return "The story has been reported." 
+    return "You have reported this story"
+
+def initialize():
+    global tensorflow_model
+    tensorflow_model = load_model('models/tensorflow.h5')
+
+def run(host='localhost', port=5000):
+    """
+    run a WSGI server using gevent
+    """
+    print('running server http://{0}'.format(host + ':' + str(port)))
+    WSGIServer((host, port), app).serve_forever()

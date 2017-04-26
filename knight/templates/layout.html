@@ -1,17 +1,32 @@
 <!doctype html>
-<title>Knight</title>
-<link rel=stylesheet type=text/css href="{{ url_for('static', filename='style.css') }}">
-<div class=page>
-  <h1>Knight</h1>
-  <div class=metanav>
-  {% if not session.logged_in %}
-    <a href="{{ url_for('login') }}">log in</a>
-  {% else %}
-    <a href="{{ url_for('logout') }}">log out</a>
-  {% endif %}
+<head>
+  <title>Knight</title>
+  <link rel=stylesheet type=text/css href="{{ url_for('static', filename='style.css') }}">
+  <meta name="google-signin-client_id" content="299591701106-cor2f1c6updmd3dq3pjg5er1evcus7ed.apps.googleusercontent.com">
+</head>
+<body>
+  <div class=page onload="onLoad();">
+    <h1>Knight</h1>
+    <div class=metanav>
+    {% if not session.logged_in %}
+        <div class="g-signin2" data-onsuccess="onSignIn"></div>
+    {% else %}
+      {{ session.full_name }}
+      <a onclick="signOut();" id="signout">Sign out</a>
+    {% endif %}
+    </div>
+    {% for message in get_flashed_messages() %}
+      <div class=flash>{{ message }}</div>
+    {% endfor %}
+    {% block body %}{% endblock %}
   </div>
-  {% for message in get_flashed_messages() %}
-    <div class=flash>{{ message }}</div>
-  {% endfor %}
-  {% block body %}{% endblock %}
-</div>
+</body>
+<script
+  src="https://code.jquery.com/jquery-3.2.1.min.js"
+  integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4="
+  crossorigin="anonymous"></script>
+<script src="https://apis.google.com/js/platform.js" async defer></script>
+<script src="{{ url_for('static', filename='main.js') }}"></script>
+</script
+
+

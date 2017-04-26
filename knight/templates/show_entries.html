@@ -11,7 +11,7 @@
   {% endif %}
   <ul class=entries>
   {% for report in reports %}
-    <li><h2>{{ report.url|safe }}</h2>{{ report.date|safe }} {{ report.user.username|safe }}
+    <li><h2>{{ report.url|safe }}</h2>{{ report.date|safe }} {{ report.user.email|safe }}
   {% else %}
     <li><em>Unbelievable.  No entries here so far</em>
   {% endfor %}
