@@ -30,3 +30,25 @@ function signOut() {
   });
 }
 
+function getParameterByName(name, url) {
+    if (!url) url = window.location.href;
+    name = name.replace(/[\[\]]/g, "\\$&");
+    var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+        results = regex.exec(url);
+    if (!results) return null;
+    if (!results[2]) return '';
+    return decodeURIComponent(results[2].replace(/\+/g, " "));
+}
+
+
+  $.ajax({
+    type: "POST",
+    url: "/api/article/info",
+    data: {"url": getParameterByName("url")},
+    success: function(data) {
+        console.log(getParameterByName("url"));
+        $('#article-title').text(data.title);
+        $("#article-image").attr("src", data.image);
+    }
+  });
+

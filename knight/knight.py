@@ -9,7 +9,7 @@ import peewee
 from peewee import *
 import requests
 from newspaper import Article
-
+import newspaper
 from keras.models import load_model
 from sklearn.externals import joblib
 from keras.preprocessing import sequence
@@ -18,6 +18,7 @@ import re
 from nltk.corpus import stopwords
 from bs4 import BeautifulSoup
 from gevent.pywsgi import WSGIServer
+import language_check
 
 CLIENT_ID = "299591701106-cor2f1c6updmd3dq3pjg5er1evcus7ed.apps.googleusercontent.com"
 app = Flask(__name__)
@@ -26,6 +27,7 @@ app.config.from_pyfile('knight_settings.cfg', silent=True)
 db = MySQLDatabase(app.config['DB_NAME'], host=app.config['DB_HOST'], user=app.config['DB_USER'], password=app.config['DB_PASSWORD'])
 tk = joblib.load('models/tokenizer.pkl')
 tensorflow_model = None
+tool = language_check.LanguageTool('en-US')
 
 def news_to_wordlist(news_text, remove_stopwords=False):
 	news_text = BeautifulSoup(news_text).get_text()
@@ -119,6 +121,10 @@ def logout():
 def show_entries():
     return render_template('show_entries.html', reports=Report.select())
 
+@app.route('/info')
+def show_info():
+    return render_template('show_info.html', reports=Report.select())
+
 @app.route('/add', methods=['POST'])
 def add_entry():
     if not session.get('logged_in'):
@@ -128,15 +134,21 @@ def add_entry():
     flash('New entry was successfully posted')
     return redirect(url_for('show_entries'))
 
-@app.route('/api/article/info', methods=['POST'])
+@app.route('/api/article/info', methods=['POST', 'GET'])
 def get_article_info():
-    url = request.form['url']
+    
+    if (request.method == "POST"):
+        url = request.form['url']
+    
+    if (request.method == "GET"):
+        url = request.args.get('url')
     
     is_article = True
     score = 0.0
     article_authors = None
     article_keywords = None
     article_summary = None
+    grammar_mismatch = 0
 
     article = Article(url)
     article.download()
@@ -152,12 +164,18 @@ def get_article_info():
         article.nlp()
         article_keywords = article.keywords
         article_summary = article.summary
+        grammar_mismatch = len(tool.check(article_text))
     
     try:
         total_reports = Report.select().where(Report.url==url).count()
     except Report.DoesNotExist:
         total_reports = 0
-    return jsonify({"is_article": is_article, "total_reports": total_reports, "ml_score": score, "authors": article_authors, "keywords": article_keywords, "summary": article_summary})
+    return jsonify({"is_article": is_article, "total_reports": total_reports,
+                     "ml_score": score, "authors": article_authors,
+                     "keywords": article_keywords, "summary": article_summary,
+                     "grammar_mismatch": grammar_mismatch,
+                     "title": article.title,
+                     "image": article.top_image})
 
 @app.route('/api/report/add', methods=['POST'])
 def new_report():
@@ -174,6 +192,8 @@ def new_report():
 def initialize():
     global tensorflow_model
     tensorflow_model = load_model('models/tensorflow.h5')
+    from keras.utils import plot_model
+    plot_model(tensorflow_model, to_file='model.png')
 
 def run(host='localhost', port=5000):
     """
