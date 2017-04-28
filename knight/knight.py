@@ -194,7 +194,7 @@ def initialize():
     from keras.utils import plot_model
     plot_model(tensorflow_model, to_file='model.png')
 
-def run(host='localhost', port=5000):
+def run(host='0.0.0.0', port=80):
     """
     run a WSGI server using gevent
     """
