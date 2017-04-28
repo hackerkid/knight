@@ -13,7 +13,6 @@ import newspaper
 from keras.models import load_model
 from sklearn.externals import joblib
 from keras.preprocessing import sequence
-import fileinput
 import re
 from nltk.corpus import stopwords
 from bs4 import BeautifulSoup
