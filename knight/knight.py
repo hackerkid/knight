@@ -211,7 +211,7 @@ def new_report():
     if not session.get('logged_in'):
         parsed_uri = urlparse(request.url)
         domain = '{uri.scheme}://{uri.netloc}/'.format(uri=parsed_uri)
-        return "Please login <a href='" + domain "'>here</a>." 
+        return "Please login <a href='" + domain + "'>here</a>." 
     try:
         old_entry = Report.get(url=request.form['url'], user=get_current_user())
     except Report.DoesNotExist:
