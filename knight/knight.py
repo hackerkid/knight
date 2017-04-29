@@ -38,6 +38,29 @@ def news_to_wordlist(news_text, remove_stopwords=False):
 		words = [w for w in words if not w in stops]
 	return(words)
 
+def get_news_status_from_score(ml_score, grammar_mismatch, total_reports):
+    ml_score = ml_score * 100
+
+    if ml_score > 75:
+        return "fake"
+
+    if total_reports > 100:
+        return "fake"
+
+    if grammar_mismatch > 150:
+        return "fake"
+
+    if ml_score > 50:
+        return "mostly-fake"
+
+    if total_reports > 20:
+        return "mostly-fake"
+
+    if ml_score > 20:
+        return "mostly-true"
+
+    return "true"
+
 class BaseModel(Model):
     class Meta:
         database = db
@@ -143,11 +166,12 @@ def get_article_info():
         url = request.args.get('url')
     
     is_article = True
-    score = 0.0
+    ml_score = 0.0
     article_authors = None
     article_keywords = None
     article_summary = None
     grammar_mismatch = 0
+    total_reports = 0
 
     article = Article(url)
     article.download()
@@ -158,7 +182,7 @@ def get_article_info():
     else:
         article_text = article.text
         ml = deep_learn_results(article_text)
-        score = float(ml[0][0])
+        ml_score = float(ml[0][0])
         article_authors = article.authors
         article.nlp()
         article_keywords = article.keywords
@@ -169,10 +193,14 @@ def get_article_info():
         total_reports = Report.select().where(Report.url==url).count()
     except Report.DoesNotExist:
         total_reports = 0
+
+    news_status = get_news_status_from_score(ml_score, grammar_mismatch, total_reports)
+
     return jsonify({"is_article": is_article, "total_reports": total_reports,
-                     "ml_score": score, "authors": article_authors,
+                     "ml_score": ml_score, "authors": article_authors,
                      "keywords": article_keywords, "summary": article_summary,
                      "grammar_mismatch": grammar_mismatch,
+                     "news_status": news_status,
                      "title": article.title,
                      "image": article.top_image})
 
@@ -194,7 +222,7 @@ def initialize():
     from keras.utils import plot_model
     plot_model(tensorflow_model, to_file='model.png')
 
-def run(host='0.0.0.0', port=80):
+def run(host='0.0.0.0', port=5000):
     """
     run a WSGI server using gevent
     """
