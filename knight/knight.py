@@ -214,7 +214,7 @@ def new_report():
         new_entry = Report(url=request.form['url'], date=datetime.datetime.now(), user=get_current_user())
         new_entry.save()
         return "The story has been reported." 
-    return "You have reported this story"
+    return "You already reported this story"
 
 def initialize():
     global tensorflow_model
