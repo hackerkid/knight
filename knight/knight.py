@@ -19,6 +19,7 @@ from bs4 import BeautifulSoup
 from gevent.pywsgi import WSGIServer
 import language_check
 import h5py
+from urllib.parse import urlparse
 
 CLIENT_ID = "299591701106-cor2f1c6updmd3dq3pjg5er1evcus7ed.apps.googleusercontent.com"
 app = Flask(__name__)
@@ -208,7 +209,9 @@ def get_article_info():
 @app.route('/api/report/add', methods=['POST'])
 def new_report():
     if not session.get('logged_in'):
-        return "Please login." 
+        parsed_uri = urlparse(request.url)
+        domain = '{uri.scheme}://{uri.netloc}/'.format(uri=parsed_uri)
+        return "Please login <a href='" + domain "'>here</a>." 
     try:
         old_entry = Report.get(url=request.form['url'], user=get_current_user())
     except Report.DoesNotExist:
