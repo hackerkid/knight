@@ -224,7 +224,7 @@ def initialize():
     global tensorflow_model
     tensorflow_model = load_model('models/tensorflow.h5')
 
-def run(host='0.0.0.0', port=5000):
+def run(host='0.0.0.0', port=80):
     """
     run a WSGI server using gevent
     """
