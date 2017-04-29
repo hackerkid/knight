@@ -220,8 +220,6 @@ def new_report():
 def initialize():
     global tensorflow_model
     tensorflow_model = load_model('models/tensorflow.h5')
-    from keras.utils import plot_model
-    plot_model(tensorflow_model, to_file='model.png')
 
 def run(host='0.0.0.0', port=5000):
     """
