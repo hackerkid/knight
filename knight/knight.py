@@ -116,7 +116,7 @@ def login():
                 try:
                     user = User.get(email=email)
                 except User.DoesNotExist:
-                    user = User(email=email, username="", full_name=full_name, join_date=datetime.datetime.now())
+                    user = User(email=email, username="", password="", full_name=full_name, join_date=datetime.datetime.now())
                     user.save()
                 session['logged_in'] = True
                 session['email'] = user.email
